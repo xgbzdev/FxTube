@@ -55,8 +55,8 @@ button, input, select { font-family: inherit; font-size: 15px; }
 
 <div id="hdr">
   <form id="searchForm" action="#">
-    <input id="q" type="search" placeholder="Search or paste a link" autocomplete="off">
-    <button type="submit" id="goBtn">Go</button>
+    <input id="q" type="search" data-ip="searchPh" placeholder="Search or paste a link" autocomplete="off">
+    <button type="submit" id="goBtn" data-i="go">Go</button>
   </form>
 </div>
 
@@ -68,11 +68,12 @@ button, input, select { font-family: inherit; font-size: 15px; }
 <div id="searchView" class="view" style="display:none">
   <div id="searchList"></div>
   <div id="searchMsg" class="msg"></div>
-  <button id="moreBtn" class="btn" style="display:none">Load more</button>
+  <button id="moreBtn" class="btn" style="display:none" data-i="more">Load more</button>
 </div>
 
 <div id="shortsView" class="view" style="display:none">
   <video id="shortVideo" loop playsinline></video>
+  <iframe id="shortEmbed" allowfullscreen style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;border:0"></iframe>
   <div id="shortInfo"></div>
   <div id="shortMsg" class="msg"></div>
   <button id="shortUp" class="shortBtn">&#9650;</button>
@@ -81,22 +82,24 @@ button, input, select { font-family: inherit; font-size: 15px; }
 
 <div id="setView" class="view" style="display:none">
   <div class="pad">
-    <h3>Server (Invidious)</h3>
-    <p class="small">Videos are loaded through a public Invidious server. If nothing loads, pick another server.</p>
+    <h3 data-i="server">Server (Invidious)</h3>
+    <p class="small" data-i="serverHelp">Videos are loaded through a public Invidious server. If nothing loads, pick another server.</p>
     <input id="instInput" type="url" placeholder="https://yewtu.be">
-    <h3>Trending region</h3>
+    <h3 data-i="region">Trending region</h3>
     <input id="regionInput" type="text" maxlength="2" placeholder="US">
-    <button id="saveBtn" class="btn">Save</button>
-    <button id="findBtn" class="btn">Find working servers</button>
+    <h3 data-i="language">Language</h3>
+    <select id="langSel" style="width:100%;height:34px;margin-bottom:12px"></select>
+    <button id="saveBtn" class="btn" data-i="save">Save</button>
+    <button id="findBtn" class="btn" data-i="find">Find working servers</button>
     <div id="setMsg" class="msg"></div>
   </div>
 </div>
 
 <div id="nav">
-  <button data-tab="home" class="on">Home</button>
-  <button data-tab="search">Search</button>
-  <button data-tab="shorts">Shorts</button>
-  <button data-tab="set">Settings</button>
+  <button data-tab="home" data-i="tab_home" class="on">Home</button>
+  <button data-tab="search" data-i="tab_search">Search</button>
+  <button data-tab="shorts" data-i="tab_shorts">Shorts</button>
+  <button data-tab="set" data-i="tab_set">Settings</button>
 </div>
 
 <div id="player" style="display:none">
@@ -105,400 +108,11 @@ button, input, select { font-family: inherit; font-size: 15px; }
     <select id="qualSel"></select>
   </div>
   <video id="mainVideo" controls></video>
+  <iframe id="mainEmbed" allowfullscreen style="display:none;width:100%;height:60%;border:0"></iframe>
   <div id="playerTitle"></div>
   <div id="playerMsg" class="msg"></div>
 </div>
 
-<script>
-/* FxTube - YouTube client for Firefox OS (ES5, no modern APIs) */
-(function () {
-  var DEFAULT_INSTANCES = [
-    'https://yewtu.be',
-    'https://inv.nadeko.net',
-    'https://invidious.nerdvpn.de',
-    'https://invidious.privacyredirect.com',
-    'https://iv.melmac.space'
-  ];
-
-  function $(id) { return document.getElementById(id); }
-
-  /* ---------- storage ---------- */
-  function load(key, def) {
-    try { var v = localStorage.getItem(key); return v === null ? def : JSON.parse(v); }
-    catch (e) { return def; }
-  }
-  function save(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
-  }
-
-  var instances = load('instances', DEFAULT_INSTANCES);
-  var region = load('region', 'US');
-  var cur = 0;
-
-  /* ---------- network ---------- */
-  function getJSON(url, ok, fail) {
-    var x;
-    try { x = new XMLHttpRequest({ mozSystem: true, mozAnon: true }); }
-    catch (e) { x = new XMLHttpRequest(); }
-    x.open('GET', url, true);
-    x.timeout = 15000;
-    x.onload = function () {
-      if (x.status >= 200 && x.status < 300) {
-        var d;
-        try { d = JSON.parse(x.responseText); } catch (e) { fail('bad response'); return; }
-        ok(d);
-      } else { fail('HTTP ' + x.status); }
-    };
-    x.onerror = function () { fail('network error'); };
-    x.ontimeout = function () { fail('timeout'); };
-    x.send();
-  }
-
-  // tries every server in turn until one answers
-  function api(path, ok, fail) {
-    var tries = 0, n = instances.length;
-    function next() {
-      if (tries >= n) { fail('No server answered. Try another one in Settings.'); return; }
-      var idx = (cur + tries) % n;
-      var base = instances[idx];
-      getJSON(base + path, function (d) { cur = idx; ok(d, base); },
-        function () { tries++; next(); });
-    }
-    next();
-  }
-
-  /* ---------- helpers ---------- */
-  function fmtTime(s) {
-    s = parseInt(s, 10) || 0;
-    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-    var t = (sec < 10 ? '0' : '') + sec;
-    if (h > 0) return h + ':' + (m < 10 ? '0' : '') + m + ':' + t;
-    return m + ':' + t;
-  }
-  function fmtViews(n) {
-    n = parseInt(n, 10);
-    if (isNaN(n)) return '';
-    if (n >= 1000000) return (Math.round(n / 100000) / 10) + 'M views';
-    if (n >= 1000) return (Math.round(n / 100) / 10) + 'K views';
-    return n + ' views';
-  }
-  function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
-
-  function absUrl(u, base) {
-    if (!u) return u;
-    if (u.indexOf('//') === 0) return 'https:' + u;
-    if (u.charAt(0) === '/') return base + u;
-    return u;
-  }
-
-  function extractId(text) {
-    var m = /(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/)([A-Za-z0-9_-]{11})/.exec(text);
-    if (m) return m[1];
-    if (/^[A-Za-z0-9_-]{11}$/.test(text)) return text;
-    return null;
-  }
-
-  /* ---------- video cards ---------- */
-  function makeCard(v) {
-    var a = document.createElement('div');
-    a.className = 'card';
-    var th = document.createElement('div');
-    th.className = 'thumb';
-    var img = document.createElement('img');
-    img.src = instances[cur] + '/vi/' + v.videoId + '/mqdefault.jpg';
-    th.appendChild(img);
-    if (v.lengthSeconds) {
-      var d = document.createElement('div');
-      d.className = 'dur';
-      d.textContent = fmtTime(v.lengthSeconds);
-      th.appendChild(d);
-    }
-    var t = document.createElement('div');
-    t.className = 'ttl';
-    t.textContent = v.title;
-    var m = document.createElement('div');
-    m.className = 'meta';
-    var bits = [v.author, fmtViews(v.viewCount), v.publishedText];
-    var out = [];
-    for (var i = 0; i < bits.length; i++) if (bits[i]) out.push(bits[i]);
-    m.textContent = out.join(' \u00B7 ');
-    a.appendChild(th); a.appendChild(t); a.appendChild(m);
-    a.onclick = function () { openPlayer(v.videoId, v.title); };
-    return a;
-  }
-
-  function renderList(list, box) {
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].type && list[i].type !== 'video') continue;
-      if (!list[i].videoId) continue;
-      box.appendChild(makeCard(list[i]));
-    }
-  }
-
-  /* ---------- tabs ---------- */
-  var tabs = ['home', 'search', 'shorts', 'set'];
-  var shortsStarted = false;
-
-  function showTab(name) {
-    for (var i = 0; i < tabs.length; i++) {
-      $(tabs[i] + 'View').style.display = tabs[i] === name ? 'block' : 'none';
-    }
-    var btns = $('nav').getElementsByTagName('button');
-    for (var j = 0; j < btns.length; j++) {
-      btns[j].className = btns[j].getAttribute('data-tab') === name ? 'on' : '';
-    }
-    if (name !== 'shorts') { $('shortVideo').pause(); }
-    if (name === 'shorts') {
-      if (!shortsStarted) { shortsStarted = true; loadShorts(true); }
-      else { $('shortVideo').play(); }
-    }
-    if (name === 'set') {
-      $('instInput').value = instances[0] || '';
-      $('regionInput').value = region;
-    }
-  }
-
-  var navBtns = $('nav').getElementsByTagName('button');
-  for (var nb = 0; nb < navBtns.length; nb++) {
-    (function (b) { b.onclick = function () { showTab(b.getAttribute('data-tab')); }; })(navBtns[nb]);
-  }
-
-  /* ---------- home / trending ---------- */
-  function loadHome() {
-    $('homeMsg').textContent = 'Loading...';
-    var p = '/api/v1/trending?region=' + encodeURIComponent(region);
-    api(p, function (d) {
-      clear($('homeList'));
-      $('homeMsg').textContent = '';
-      renderList(d, $('homeList'));
-      if (!$('homeList').firstChild) $('homeMsg').textContent = 'Nothing here. Try searching.';
-    }, function () {
-      // trending is disabled on some servers: fall back to popular
-      api('/api/v1/popular', function (d) {
-        clear($('homeList'));
-        $('homeMsg').textContent = '';
-        renderList(d, $('homeList'));
-      }, function (err) {
-        $('homeMsg').textContent = err;
-      });
-    });
-  }
-
-  /* ---------- search ---------- */
-  var lastQuery = '', searchPage = 1;
-
-  function doSearch(q, page) {
-    lastQuery = q; searchPage = page;
-    if (page === 1) clear($('searchList'));
-    $('moreBtn').style.display = 'none';
-    $('searchMsg').textContent = 'Searching...';
-    api('/api/v1/search?type=video&page=' + page + '&q=' + encodeURIComponent(q), function (d) {
-      $('searchMsg').textContent = '';
-      renderList(d, $('searchList'));
-      if (!$('searchList').firstChild) $('searchMsg').textContent = 'No results.';
-      else $('moreBtn').style.display = 'block';
-    }, function (err) { $('searchMsg').textContent = err; });
-  }
-
-  $('searchForm').onsubmit = function () {
-    var q = $('q').value.replace(/^\s+|\s+$/g, '');
-    if (!q) return false;
-    var id = extractId(q);
-    if (id) { openPlayer(id, ''); return false; }
-    showTab('search');
-    doSearch(q, 1);
-    $('q').blur();
-    return false;
-  };
-  $('moreBtn').onclick = function () { doSearch(lastQuery, searchPage + 1); };
-
-  /* ---------- fetching a playable stream ---------- */
-  function getStreams(id, ok, fail) {
-    api('/api/v1/videos/' + id + '?local=true', function (d, base) {
-      var list = d.formatStreams || [];
-      var out = [];
-      for (var i = 0; i < list.length; i++) {
-        var f = list[i];
-        out.push({
-          label: (f.qualityLabel || f.quality || '?') + ' ' + (f.container || ''),
-          url: absUrl(f.url, base),
-          container: f.container
-        });
-      }
-      if (!out.length) { fail('No playable stream'); return; }
-      ok(out, d);
-    }, fail);
-  }
-
-  function pickDefault(streams) {
-    // prefer 360p mp4: light enough for old hardware
-    var best = 0, i;
-    for (i = 0; i < streams.length; i++) {
-      if (/360/.test(streams[i].label)) { best = i; break; }
-    }
-    return best;
-  }
-
-  /* ---------- full player ---------- */
-  var curStreams = [];
-
-  function openPlayer(id, title) {
-    $('player').style.display = 'block';
-    $('playerTitle').textContent = title || '';
-    $('playerMsg').textContent = 'Loading video...';
-    clear($('qualSel'));
-    var v = $('mainVideo');
-    v.removeAttribute('src');
-    getStreams(id, function (streams, info) {
-      curStreams = streams;
-      if (!title) $('playerTitle').textContent = info.title || '';
-      for (var i = 0; i < streams.length; i++) {
-        var o = document.createElement('option');
-        o.value = i; o.textContent = streams[i].label;
-        $('qualSel').appendChild(o);
-      }
-      var def = pickDefault(streams);
-      $('qualSel').value = def;
-      v.src = streams[def].url;
-      v.play();
-      $('playerMsg').textContent = '';
-    }, function (err) { $('playerMsg').textContent = err; });
-  }
-
-  $('qualSel').onchange = function () {
-    var v = $('mainVideo'), t = v.currentTime;
-    v.src = curStreams[$('qualSel').value].url;
-    v.addEventListener('loadedmetadata', function seek() {
-      v.removeEventListener('loadedmetadata', seek, false);
-      try { v.currentTime = t; } catch (e) {}
-      v.play();
-    }, false);
-  };
-
-  $('closeBtn').onclick = function () {
-    var v = $('mainVideo');
-    v.pause();
-    v.removeAttribute('src');
-    v.load();
-    $('player').style.display = 'none';
-  };
-
-  /* ---------- shorts ---------- */
-  var shorts = [], shortIdx = 0, shortsPage = 1, shortsLoading = false, shortToken = 0;
-
-  function loadShorts(first) {
-    if (shortsLoading) return;
-    shortsLoading = true;
-    if (first) $('shortMsg').textContent = 'Loading shorts...';
-    api('/api/v1/search?type=video&duration=short&sort_by=relevance&page=' + shortsPage +
-      '&q=' + encodeURIComponent('#shorts'), function (d) {
-      shortsLoading = false;
-      shortsPage++;
-      var added = 0;
-      for (var i = 0; i < d.length; i++) {
-        // real shorts are 60 seconds or less
-        if (d[i].videoId && d[i].lengthSeconds && d[i].lengthSeconds <= 60) {
-          shorts.push(d[i]); added++;
-        }
-      }
-      if (first) {
-        if (shorts.length) { $('shortMsg').textContent = ''; playShort(0); }
-        else if (added === 0) { shortsLoading = false; loadShorts(true); }
-      }
-    }, function (err) {
-      shortsLoading = false;
-      $('shortMsg').textContent = err;
-      if (first) shortsStarted = false;
-    });
-  }
-
-  function playShort(i) {
-    if (i < 0) i = 0;
-    if (i >= shorts.length) {
-      loadShorts(false);
-      $('shortMsg').textContent = 'Loading more...';
-      return;
-    }
-    shortIdx = i;
-    var token = ++shortToken;
-    var s = shorts[i], v = $('shortVideo');
-    $('shortInfo').textContent = s.title + ' - ' + (s.author || '');
-    $('shortMsg').textContent = 'Loading...';
-    v.pause();
-    v.removeAttribute('src');
-    getStreams(s.videoId, function (streams) {
-      if (token !== shortToken) return;
-      $('shortMsg').textContent = '';
-      v.src = streams[pickDefault(streams)].url;
-      v.play();
-    }, function (err) {
-      if (token !== shortToken) return;
-      $('shortMsg').textContent = err;
-    });
-    if (i >= shorts.length - 3) loadShorts(false);
-  }
-
-  $('shortUp').onclick = function () { playShort(shortIdx - 1); };
-  $('shortDown').onclick = function () { playShort(shortIdx + 1); };
-
-  // swipe up = next, swipe down = previous, tap = pause/play
-  var touchY = null, touchMoved = false;
-  var sv = $('shortsView');
-  sv.addEventListener('touchstart', function (e) {
-    if (e.target.className === 'shortBtn') return;
-    touchY = e.touches[0].clientY; touchMoved = false;
-  }, false);
-  sv.addEventListener('touchmove', function () { touchMoved = true; }, false);
-  sv.addEventListener('touchend', function (e) {
-    if (touchY === null) return;
-    var dy = e.changedTouches[0].clientY - touchY;
-    touchY = null;
-    if (dy < -60) { playShort(shortIdx + 1); }
-    else if (dy > 60) { playShort(shortIdx - 1); }
-    else if (!touchMoved) {
-      var v = $('shortVideo');
-      if (v.paused) v.play(); else v.pause();
-    }
-  }, false);
-  $('shortVideo').addEventListener('ended', function () { /* loop attribute handles replay */ }, false);
-
-  /* ---------- settings ---------- */
-  $('saveBtn').onclick = function () {
-    var u = $('instInput').value.replace(/\s+|\/+$/g, '');
-    if (u) {
-      var rest = [];
-      for (var i = 0; i < instances.length; i++) if (instances[i] !== u) rest.push(instances[i]);
-      instances = [u].concat(rest);
-      cur = 0;
-      save('instances', instances);
-    }
-    var r = $('regionInput').value.toUpperCase();
-    if (r.length === 2) { region = r; save('region', r); }
-    $('setMsg').textContent = 'Saved.';
-    loadHome();
-  };
-
-  $('findBtn').onclick = function () {
-    $('setMsg').textContent = 'Looking for servers...';
-    getJSON('https://api.invidious.io/instances.json?sort_by=health', function (d) {
-      var found = [];
-      for (var i = 0; i < d.length && found.length < 8; i++) {
-        var info = d[i][1];
-        if (info && info.type === 'https' && info.api === true && info.uri) found.push(info.uri);
-      }
-      if (!found.length) { $('setMsg').textContent = 'No servers found.'; return; }
-      instances = found; cur = 0;
-      save('instances', instances);
-      $('instInput').value = found[0];
-      $('setMsg').textContent = 'Found ' + found.length + ' servers.';
-      loadHome();
-    }, function (err) { $('setMsg').textContent = 'Failed: ' + err; });
-  };
-
-  /* ---------- go ---------- */
-  loadHome();
-})();
-
-</script>
+<script src="app.js"></script>
 </body>
 </html>
