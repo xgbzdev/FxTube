@@ -143,13 +143,13 @@
 
   // tries every server in turn until one answers
   function api(path, ok, fail) {
-    var tries = 0, n = instances.length;
+    var tries = 0, n = instances.length, errs = [];
     function next() {
-      if (tries >= n) { fail(t('noServer')); return; }
+      if (tries >= n) { fail(t('noServer') + ' [' + errs.slice(0, 3).join('; ') + ']'); return; }
       var idx = (cur + tries) % n;
       var base = instances[idx];
       getJSON(base + path, function (d) { cur = idx; ok(d, base); },
-        function () { tries++; next(); });
+        function (why) { errs.push(base.replace(/^https?:\/\//, '') + ': ' + why); tries++; next(); });
     }
     next();
   }
