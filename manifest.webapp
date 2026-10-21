@@ -2,20 +2,14 @@
   "name": "FxTube",
   "description": "YouTube client for Firefox OS: videos and shorts",
   "version": "1.0",
-  "launch_path": "/index.html",
-  "type": "privileged",
+  "launch_path": "index.html",
+  "type": "web",
   "icons": {
-    "60": "/icons/60.png",
-    "128": "/icons/128.png"
+    "60": "icons/60.png",
+    "128": "icons/128.png"
   },
   "developer": {
     "name": "FxTube"
   },
-  "default_locale": "en",
-  "permissions": {
-    "systemXHR": {
-      "description": "Fetch video data from Invidious/Piped servers"
-    }
-  },
-  "csp": "default-src *; script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'; img-src * data:; media-src *; connect-src *"
+  "default_locale": "en"
 }
